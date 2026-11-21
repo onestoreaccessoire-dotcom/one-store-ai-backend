@@ -4,7 +4,18 @@ const crypto = require("crypto");
 
 const app = express();
 app.use(express.json());
+app.use(express.text({ type: "*/*" }));
 
+app.use((req, res, next) => {
+  if (typeof req.body === "string") {
+    try {
+      req.body = JSON.parse(req.body);
+    } catch (error) {
+      console.error("JSON parsing error:", error);
+    }
+  }
+  next();
+});
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const APP_ID = process.env.APP_ID;
 const APP_SECRET = process.env.APP_SECRET;
