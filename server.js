@@ -1,19 +1,69 @@
 const express = require("express");
-const app = express();
+const { Pool } = require("pg");
+const crypto = require("crypto");
 
+const app = express();
 app.use(express.json());
 
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
-let PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
-
 const APP_ID = process.env.APP_ID;
 const APP_SECRET = process.env.APP_SECRET;
 const REDIRECT_URI = process.env.OAUTH_REDIRECT_URI;
 const FB_CONFIG_ID = process.env.FB_CONFIG_ID;
 
 const API_VERSION = "v27.0";
-const loginStates = new Set();
 
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  connectionTimeoutMillis: 10000
+});
+
+let PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN || "";
+const loginStates = new Map();
+
+// DATABASE INITIALIZATION
+async function initDatabase() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS facebook_page (
+      id INTEGER PRIMARY KEY,
+      page_id TEXT NOT NULL,
+      page_name TEXT NOT NULL,
+      page_access_token TEXT NOT NULL,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  const result = await pool.query(
+    "SELECT page_access_token FROM facebook_page WHERE id = 1"
+  );
+
+  if (result.rows.length > 0) {
+    PAGE_ACCESS_TOKEN = result.rows[0].page_access_token;
+    console.log("Facebook Page token loaded from database.");
+  }
+
+  console.log("Database connected successfully.");
+}
+
+// SAVE FACEBOOK PAGE
+async function saveFacebookPage(page) {
+  await pool.query(
+    `INSERT INTO facebook_page
+      (id, page_id, page_name, page_access_token, updated_at)
+     VALUES (1, $1, $2, $3, CURRENT_TIMESTAMP)
+     ON CONFLICT (id)
+     DO UPDATE SET
+       page_id = EXCLUDED.page_id,
+       page_name = EXCLUDED.page_name,
+       page_access_token = EXCLUDED.page_access_token,
+       updated_at = CURRENT_TIMESTAMP`,
+    [page.id, page.name, page.access_token]
+  );
+
+  PAGE_ACCESS_TOKEN = page.access_token;
+}
+
+// HOME
 app.get("/", (req, res) => {
   res.send("ONE STORE AI Backend is running!");
 });
@@ -21,11 +71,11 @@ app.get("/", (req, res) => {
 // FACEBOOK LOGIN
 app.get("/auth/facebook", (req, res) => {
   if (!APP_ID || !REDIRECT_URI || !FB_CONFIG_ID) {
-    return res.status(500).send("Facebook Login configuration missing.");
+    return res.status(500).send("Facebook configuration missing.");
   }
 
-  const state = require("crypto").randomBytes(16).toString("hex");
-  loginStates.add(state);
+  const state = crypto.randomBytes(16).toString("hex");
+  loginStates.set(state, Date.now());
 
   const loginUrl = new URL(
     `https://www.facebook.com/${API_VERSION}/dialog/oauth`
@@ -46,11 +96,13 @@ app.get("/auth/facebook/callback", async (req, res) => {
     const { code, state, error } = req.query;
 
     if (error) {
-      return res.status(400).send("Facebook login was cancelled or denied.");
+      return res.status(400).send("Facebook login cancelled or denied.");
     }
 
-    if (!code || !state || !loginStates.has(state)) {
-      return res.status(400).send("Invalid Facebook login request.");
+    const stateTime = loginStates.get(state);
+
+    if (!code || !stateTime || Date.now() - stateTime > 600000) {
+      return res.status(400).send("Invalid or expired login request.");
     }
 
     loginStates.delete(state);
@@ -84,21 +136,20 @@ app.get("/auth/facebook/callback", async (req, res) => {
 
     if (!pagesResponse.ok || !pagesData.data || pagesData.data.length === 0) {
       console.error("Pages error:", pagesData);
-      return res.status(400).send(
-        "No Facebook Page found or permission not granted."
-      );
+      return res.status(400).send("No Facebook Page found or permission denied.");
     }
 
     const page = pagesData.data[0];
 
-    PAGE_ACCESS_TOKEN = page.access_token;
+    await saveFacebookPage(page);
 
-    console.log("Facebook Page connected:", page.name, page.id);
+    console.log("Facebook Page saved:", page.name, page.id);
 
     res.send(`
       <h2>ONE STORE AI</h2>
       <p>Connexion Facebook réussie !</p>
-      <p>Page connectée : ${page.name}</p>
+      <p>Page connectée : ${page.name.replace(/[&<>"']/g, "")}</p>
+      <p>Page Access Token enregistré dans la base de données.</p>
       <p>Vous pouvez retourner dans votre application.</p>
     `);
 
@@ -172,8 +223,16 @@ app.post("/webhook", (req, res) => {
   }
 });
 
+// START SERVER
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log("ONE STORE AI running on port " + PORT);
-});
+initDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log("ONE STORE AI running on port " + PORT);
+    });
+  })
+  .catch(error => {
+    console.error("Database initialization failed:", error);
+    process.exit(1);
+  });
