@@ -75,7 +75,39 @@ async function saveFacebookPage(page) {
   PAGE_ACCESS_TOKEN = page.access_token;
 }
 
-// HOME
+// ADD PRODUCT
+app.post("/api/products", async (req, res) => {
+  try {
+    const { name, price, stock, description, image_url } = req.body;
+
+    if (!name || price === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "Nom et prix obligatoires."
+      });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO products
+       (name, price, stock, description, image_url)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [name, price, stock || 0, description || "", image_url || ""]
+    );
+
+    res.json({
+      success: true,
+      product: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error("Add product error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Erreur lors de l'enregistrement du produit."
+    });
+  }
+});// HOME
 app.get("/", (req, res) => {
   res.send("ONE STORE AI Backend is running!");
 });
