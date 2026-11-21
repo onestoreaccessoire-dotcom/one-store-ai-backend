@@ -42,7 +42,19 @@ async function initDatabase() {
     console.log("Facebook Page token loaded from database.");
   }
 
-  console.log("Database connected successfully.");
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS products (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      price NUMERIC NOT NULL,
+      stock INTEGER NOT NULL DEFAULT 0,
+      description TEXT,
+      image_url TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  console.log("Products table ready.");  console.log("Database connected successfully.");
 }
 
 // SAVE FACEBOOK PAGE
