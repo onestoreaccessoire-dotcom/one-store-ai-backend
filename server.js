@@ -2,7 +2,12 @@ const express = require("express");
 const { Pool } = require("pg");
 const crypto = require("crypto");
 const cloudinary = require("cloudinary").v2;
+const multer = require("multer");
 
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
