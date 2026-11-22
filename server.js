@@ -324,7 +324,7 @@ initDatabase()
     }
   );
 
-  stream.end(req.file.buffer);
+  stream.end(req.body);
 });app.listen(PORT, () => {
       console.log("ONE STORE AI running on port " + PORT);
     });
