@@ -160,7 +160,8 @@ async function getProducts() {
 
   return result.rows;
 }
-}// BUILD PRODUCTS REPLY
+
+// BUILD PRODUCTS REPLY
 function buildProductsReply(products, language) {
   if (products.length === 0) {
     return language === "fr"
