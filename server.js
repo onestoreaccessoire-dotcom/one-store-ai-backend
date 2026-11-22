@@ -181,7 +181,8 @@ function buildProductsReply(products, language) {
   return "Ireto ny produits misy eto aminay 😊\n\n" + productList +
     "\n\nAlefaso ny numéro an'ilay produit tianao hovidiana.";
 }
-}// DETECT CUSTOMER LANGUAGE
+
+// DETECT CUSTOMER LANGUAGE
 function detectLanguage(text) {
   const message = text.toLowerCase();
 
