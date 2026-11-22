@@ -449,6 +449,16 @@ initDatabase()
     console.error("Get products error:", error);
     res.status(500).json({ error: "Database error" });
   }
+})app.get("/api/orders", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM orders ORDER BY id DESC"
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Get orders error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
 });app.post("/api/upload", express.raw({ type: "*/*", limit: "5mb" }), (req, res) => {
   if (!req.body || !req.body.length) {
     return res.status(400).json({ success: false, message: "Aucune image reçue." });
