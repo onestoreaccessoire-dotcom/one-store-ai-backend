@@ -968,7 +968,6 @@ app.post("/webhook", (req, res) => {
 });
 
 // SERVER START
-const PORT = process.env.PORT || 3000;
 
 initDatabase()
   .then(() => {
