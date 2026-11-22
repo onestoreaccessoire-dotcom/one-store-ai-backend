@@ -304,6 +304,27 @@ initDatabase()
     console.error("Get products error:", error);
     res.status(500).json({ error: "Database error" });
   }
+});app.post("/api/upload", upload.single("image"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: "Aucune image reçue." });
+  }
+
+  const stream = cloudinary.uploader.upload_stream(
+    { folder: "one-store-ai" },
+    (error, result) => {
+      if (error) {
+        console.error("Cloudinary upload error:", error);
+        return res.status(500).json({ success: false });
+      }
+
+      res.json({
+        success: true,
+        image_url: result.secure_url
+      });
+    }
+  );
+
+  stream.end(req.file.buffer);
 });app.listen(PORT, () => {
       console.log("ONE STORE AI running on port " + PORT);
     });
