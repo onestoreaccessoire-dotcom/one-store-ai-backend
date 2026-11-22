@@ -283,7 +283,17 @@ const PORT = process.env.PORT || 3000;
 
 initDatabase()
   .then(() => {
-    app.listen(PORT, () => {
+    app.get("/api/products", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM products ORDER BY id DESC"
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Get products error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});app.listen(PORT, () => {
       console.log("ONE STORE AI running on port " + PORT);
     });
   })
