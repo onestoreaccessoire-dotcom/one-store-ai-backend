@@ -75,7 +75,23 @@ async function initDatabase() {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS orders (
+    id SERIAL PRIMARY KEY,
+    sender_id TEXT NOT NULL,
+    product_id INTEGER REFERENCES products(id),
+    product_name TEXT NOT NULL,
+    unit_price INTEGER NOT NULL,
+    quantity INTEGER NOT NULL,
+    customer_name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    total_price INTEGER NOT NULL,
+    status TEXT DEFAULT 'nouvelle',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )
+`);
 
+console.log("Orders table ready.");
   console.log("Products table ready.");  console.log("Database connected successfully.");
 }
 
