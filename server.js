@@ -42,7 +42,14 @@ const pool = new Pool({
 
 let PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN || "";
 const loginStates = new Map();
+let PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN || "";
+const loginStates = new Map();
 
+// CUSTOMER ORDER SESSIONS
+const orderSessions = new Map();
+
+// DATABASE INITIALIZATION
+async function initDatabase() {
 // DATABASE INITIALIZATION
 async function initDatabase() {
   await pool.query(`
