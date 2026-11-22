@@ -15,7 +15,7 @@ cloudinary.config({
 });
 const app = express();
 app.use(express.json());
-app.use(express.text({ type: "*/*" }));
+app.use(express.text({ type: ["text/plain", "application/json"] }));
 
 app.use((req, res, next) => {
   if (typeof req.body === "string") {
