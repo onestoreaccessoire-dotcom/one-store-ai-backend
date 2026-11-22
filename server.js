@@ -293,6 +293,57 @@ app.get("/auth/facebook/callback", async (req, res) => {
   }
 });
 
+// CREATE CUSTOMER ORDER
+app.post("/api/orders", async (req, res) => {
+  try {
+    const {
+      sender_id,
+      product_id,
+      product_name,
+      unit_price,
+      quantity,
+      customer_name,
+      phone
+    } = req.body;
+
+    if (
+      !sender_id || !product_id || !product_name ||
+      !unit_price || !quantity || !customer_name || !phone
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Informations de commande incomplètes."
+      });
+    }
+
+    const total_price = Number(unit_price) * Number(quantity);
+
+    const result = await pool.query(
+      `INSERT INTO orders
+      (sender_id, product_id, product_name, unit_price,
+       quantity, customer_name, phone, total_price)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      RETURNING *`,
+      [
+        sender_id, product_id, product_name,
+        unit_price, quantity, customer_name,
+        phone, total_price
+      ]
+    );
+
+    res.json({
+      success: true,
+      order: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error("Create order error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Erreur lors de l'enregistrement."
+    });
+  }
+});
 // WEBHOOK VERIFICATION
 app.get("/webhook", (req, res) => {
   if (
