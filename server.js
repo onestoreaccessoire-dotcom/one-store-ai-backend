@@ -305,7 +305,7 @@ initDatabase()
     res.status(500).json({ error: "Database error" });
   }
 });app.post("/api/upload", express.raw({ type: "*/*", limit: "5mb" }), (req, res) => {
-  if (!req.file) {
+  if (!req.body || !req.body.length) {
     return res.status(400).json({ success: false, message: "Aucune image reçue." });
   }
 
