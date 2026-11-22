@@ -133,7 +133,59 @@ app.post("/api/products", async (req, res) => {
 app.get("/", (req, res) => {
   res.send("ONE STORE AI Backend is running!");
 });
+// GET PRODUCTS FROM DATABASE
+async function getProducts() {
+  const result = await pool.query(
+    "SELECT name, price, stock, description FROM products ORDER BY id DESC"
+  );
 
+  return result.rows;
+}// BUILD PRODUCTS REPLY
+function buildProductsReply(products, language) {
+  if (products.length === 0) {
+    return language === "fr"
+      ? "Désolé, aucun produit n'est disponible pour le moment."
+      : "Miala tsiny, mbola tsy misy produit disponible amin'izao fotoana izao.";
+  }
+
+  const productList = products.map(product =>
+    `• ${product.name} - ${product.price} Ar (Stock: ${product.stock})`
+  ).join("\n");
+
+  if (language === "fr") {
+    return "Voici nos produits disponibles 😊\n\n" + productList +
+      "\n\nLequel vous intéresse ?";
+  }
+
+  return "Ireto ny produits misy eto aminay 😊\n\n" + productList +
+    "\n\nIza amin'ireo no mahaliana anao ?";
+}// DETECT CUSTOMER LANGUAGE
+function detectLanguage(text) {
+  const message = text.toLowerCase();
+
+  const malagasyWords = [
+    "manao ahoana", "mila", "misy", "ohatrinona",
+    "vidiny", "aiza", "azafady", "mba", "afaka",
+    "ve", "firy", "hividy", "commande"
+  ];
+
+  const frenchWords = [
+    "bonjour", "bonsoir", "combien", "prix",
+    "disponible", "avez-vous", "je veux",
+    "commander", "merci", "livraison",
+    "est-ce", "produit"
+  ];
+
+  const mgScore = malagasyWords.filter(word =>
+    message.includes(word)
+  ).length;
+
+  const frScore = frenchWords.filter(word =>
+    message.includes(word)
+  ).length;
+
+  return frScore > mgScore ? "fr" : "mg";
+    }
 // FACEBOOK LOGIN
 app.get("/auth/facebook", (req, res) => {
   if (!APP_ID || !REDIRECT_URI || !FB_CONFIG_ID) {
@@ -279,12 +331,38 @@ app.post("/webhook", (req, res) => {
 
       if (!senderId || !receivedText) continue;
 
-      sendMessage(
-        senderId,
-        "Salama 😊 Tongasoa eto amin'ny ONE STORE! Misaotra amin'ny hafatrao. Inona no fanampiana ilainao?"
-      ).catch(error => {
-        console.error("Messenger error:", error);
-      });
+      (async () => {
+        try {
+          const language = detectLanguage(receivedText);
+          const message = receivedText.toLowerCase();
+
+          const productKeywords = [
+            "produit", "produits", "entana",
+            "misy", "vidiny", "ohatrinona",
+            "combien", "prix", "disponible",
+            "catalogue", "article", "articles"
+          ];
+
+          const wantsProducts = productKeywords.some(word =>
+            message.includes(word)
+          );
+
+          if (wantsProducts) {
+            const products = await getProducts();
+            const reply = buildProductsReply(products, language);
+
+            await sendMessage(senderId, reply);
+          } else {
+            const reply = language === "fr"
+              ? "Bonjour 😊 Bienvenue chez ONE STORE ! Comment pouvons-nous vous aider ?"
+              : "Salama 😊 Tongasoa eto amin'ny ONE STORE ! Inona no fanampiana ilainao ?";
+
+            await sendMessage(senderId, reply);
+          }
+        } catch (error) {
+          console.error("Messenger automatic reply error:", error);
+        }
+      })();
     }
   }
 });
