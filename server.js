@@ -449,7 +449,8 @@ initDatabase()
     console.error("Get products error:", error);
     res.status(500).json({ error: "Database error" });
   }
-})app.get("/api/orders", async (req, res) => {
+});
+    app.get("/api/orders", async (req, res) => {
   try {
     const result = await pool.query(
       "SELECT * FROM orders ORDER BY id DESC"
@@ -459,7 +460,8 @@ initDatabase()
     console.error("Get orders error:", error);
     res.status(500).json({ error: "Database error" });
   }
-});app.post("/api/upload", express.raw({ type: "*/*", limit: "5mb" }), (req, res) => {
+});
+    app.post("/api/upload", express.raw({ type: "*/*", limit: "5mb" }), (req, res) => {
   if (!req.body || !req.body.length) {
     return res.status(400).json({ success: false, message: "Aucune image reçue." });
   }
@@ -480,7 +482,8 @@ initDatabase()
   );
 
   stream.end(req.body);
-});app.listen(PORT, () => {
+});
+    app.listen(PORT, () => {
       console.log("ONE STORE AI running on port " + PORT);
     });
   })
