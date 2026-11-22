@@ -155,10 +155,11 @@ app.get("/", (req, res) => {
 // GET PRODUCTS FROM DATABASE
 async function getProducts() {
   const result = await pool.query(
-    "SELECT name, price, stock, description FROM products ORDER BY id DESC"
+    "SELECT id, name, price, stock, description FROM products ORDER BY id DESC"
   );
 
   return result.rows;
+}
 }// BUILD PRODUCTS REPLY
 function buildProductsReply(products, language) {
   if (products.length === 0) {
