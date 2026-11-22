@@ -390,7 +390,7 @@ async function sendMessage(senderId, message) {
   console.log("Messenger response:", result);
 }
 
-// WEBHOOK MESSAGES
+// WEBHOOK MESSAGES - AUTOMATIC ORDER SYSTEM
 app.post("/webhook", (req, res) => {
   res.sendStatus(200);
 
@@ -408,8 +408,111 @@ app.post("/webhook", (req, res) => {
       (async () => {
         try {
           const language = detectLanguage(receivedText);
-          const message = receivedText.toLowerCase();
+          const message = receivedText.trim();
+          const lowerMessage = message.toLowerCase();
 
+          // CANCEL ORDER
+          if (
+            ["cancel", "annuler", "foana"].includes(lowerMessage)
+          ) {
+            orderSessions.delete(senderId);
+            await sendMessage(
+              senderId,
+              "Commande annulée. Afaka manomboka indray ianao."
+            );
+            return;
+          }
+
+          // CHECK EXISTING ORDER SESSION
+          const session = orderSessions.get(senderId);
+
+          // STEP 1: SELECT PRODUCT
+          if (session && session.step === "quantity") {
+            const quantity = Number(message);
+
+            if (
+              !Number.isInteger(quantity) ||
+              quantity <= 0
+            ) {
+              await sendMessage(senderId, "Ampidiro ny quantité marina.");
+              return;
+            }
+
+            if (quantity > session.product.stock) {
+              await sendMessage(
+                senderId,
+                `Stock disponible: ${session.product.stock}. Ampidiro quantité mety.`
+              );
+              return;
+            }
+
+            session.quantity = quantity;
+            session.step = "name";
+            orderSessions.set(senderId, session);
+
+            await sendMessage(senderId, "Inona ny anaranao?");
+            return;
+          }
+
+          // STEP 2: CUSTOMER NAME
+          if (session && session.step === "name") {
+            if (message.length < 2) {
+              await sendMessage(senderId, "Ampidiro ny anaranao azafady.");
+              return;
+            }
+
+            session.customer_name = message;
+            session.step = "phone";
+            orderSessions.set(senderId, session);
+
+            await sendMessage(senderId, "Inona ny numéro téléphone anao?");
+            return;
+          }
+
+          // STEP 3: PHONE AND SAVE ORDER
+          if (session && session.step === "phone") {
+            const phone = message.replace(/[\s-]/g, "");
+
+            if (!/^\+?\d{8,15}$/.test(phone)) {
+              await sendMessage(
+                senderId,
+                "Numéro téléphone tsy mety. Avereno azafady."
+              );
+              return;
+            }
+
+            const product = session.product;
+            const total = Number(product.price) * session.quantity;
+
+            const result = await pool.query(
+              `INSERT INTO orders
+              (sender_id, product_id, product_name, unit_price,
+               quantity, customer_name, phone, total_price)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+              RETURNING *`,
+              [
+                senderId,
+                product.id,
+                product.name,
+                Number(product.price),
+                session.quantity,
+                session.customer_name,
+                phone,
+                total
+              ]
+            );
+
+            orderSessions.delete(senderId);
+
+            await sendMessage(
+              senderId,
+              `✅ COMMANDE VOARAY!\n\nProduit: ${product.name}\nQuantité: ${session.quantity}\nPrix total: ${total} Ar\nAnarana: ${session.customer_name}\nTéléphone: ${phone}\n\nMisaotra anao niantsena teto amin'ny ONE STORE 😊`
+            );
+            console.log("New order saved:", result.rows[0].id);
+            return;
+          }
+
+          // SHOW PRODUCTS
           const productKeywords = [
             "produit", "produits", "entana",
             "misy", "vidiny", "ohatrinona",
@@ -418,23 +521,64 @@ app.post("/webhook", (req, res) => {
           ];
 
           const wantsProducts = productKeywords.some(word =>
-            message.includes(word)
+            lowerMessage.includes(word)
           );
 
           if (wantsProducts) {
             const products = await getProducts();
-            const reply = buildProductsReply(products, language);
-
-            await sendMessage(senderId, reply);
-          } else {
-            const reply = language === "fr"
-              ? "Bonjour 😊 Bienvenue chez ONE STORE ! Comment pouvons-nous vous aider ?"
-              : "Salama 😊 Tongasoa eto amin'ny ONE STORE ! Inona no fanampiana ilainao ?";
-
-            await sendMessage(senderId, reply);
+            await sendMessage(
+              senderId,
+              buildProductsReply(products, language)
+            );
+            return;
           }
+
+          // SELECT PRODUCT BY ID
+          if (/^\d+$/.test(message)) {
+            const productId = Number(message);
+
+            const result = await pool.query(
+              "SELECT id, name, price, stock FROM products WHERE id = $1",
+              [productId]
+            );
+
+            if (result.rows.length === 0) {
+              await sendMessage(senderId, "Tsy hita io numéro produit io.");
+              return;
+            }
+
+            const product = result.rows[0];
+
+            if (product.stock <= 0) {
+              await sendMessage(senderId, "Lany stock io produit io.");
+              return;
+            }
+
+            orderSessions.set(senderId, {
+              step: "quantity",
+              product: product
+            });
+
+            await sendMessage(
+              senderId,
+              `Produit: ${product.name}\nPrix: ${product.price} Ar\nStock: ${product.stock}\n\nFiry ny quantité tianao?`
+            );
+            return;
+          }
+
+          // DEFAULT GREETING
+          const reply = language === "fr"
+            ? "Bonjour 😊 Bienvenue chez ONE STORE ! Envoyez « produits » pour voir notre catalogue."
+            : "Salama 😊 Tongasoa eto amin'ny ONE STORE ! Alefaso ny teny hoe produits raha hijery ny entana misy.";
+
+          await sendMessage(senderId, reply);
+
         } catch (error) {
-          console.error("Messenger automatic reply error:", error);
+          console.error("Messenger automatic order error:", error);
+          await sendMessage(
+            senderId,
+            "Nisy olana kely. Avereno azafady afaka kelikely."
+          );
         }
       })();
     }
