@@ -304,7 +304,7 @@ initDatabase()
     console.error("Get products error:", error);
     res.status(500).json({ error: "Database error" });
   }
-});app.post("/api/upload", upload.single("image"), (req, res) => {
+});app.post("/api/upload", express.raw({ type: "*/*", limit: "5mb" }), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: "Aucune image reçue." });
   }
