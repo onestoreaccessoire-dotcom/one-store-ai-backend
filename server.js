@@ -99,7 +99,7 @@ async function saveFacebookPage(page) {
 
 // ADD PRODUCT
 app.post("/api/products", async (req, res) => {
-  try {
+  try {console.log("ADD PRODUCT BODY:", req.body);
     const { name, price, stock, description, image_url } = req.body;
 
     if (!name || price === undefined) {
