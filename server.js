@@ -170,16 +170,17 @@ function buildProductsReply(products, language) {
   }
 
   const productList = products.map(product =>
-    `• ${product.name} - ${product.price} Ar (Stock: ${product.stock})`
+    `• ${product.id}. ${product.name} - ${product.price} Ar (Stock: ${product.stock})`
   ).join("\n");
 
   if (language === "fr") {
     return "Voici nos produits disponibles 😊\n\n" + productList +
-      "\n\nLequel vous intéresse ?";
+      "\n\nEnvoyez le numéro du produit qui vous intéresse.";
   }
 
   return "Ireto ny produits misy eto aminay 😊\n\n" + productList +
-    "\n\nIza amin'ireo no mahaliana anao ?";
+    "\n\nAlefaso ny numéro an'ilay produit tianao hovidiana.";
+}
 }// DETECT CUSTOMER LANGUAGE
 function detectLanguage(text) {
   const message = text.toLowerCase();
