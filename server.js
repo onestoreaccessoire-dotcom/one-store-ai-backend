@@ -136,15 +136,22 @@ async function geocodeAddress(address) {
     lastNominatimRequest = Date.now();
   };
 
-  const queries = localBias
-    ? [
-        `${cleanAddress}, Antananarivo, Analamanga, Madagascar`,
-        `${cleanAddress}, Antananarivo, Madagascar`
-      ]
-    : [cleanAddress.includes('Madagascar') ? cleanAddress : `${cleanAddress}, Madagascar`];
+  // Search the address exactly as the customer supplied it first. Do not
+  // append Antananarivo/Analamanga when those place names are already present:
+  // doing so creates duplicated queries (for example, "... Antananarivo,
+  // Madagascar, Antananarivo, Analamanga, Madagascar") that Nominatim may not
+  // resolve even though the original address is valid.
+  const queries = [cleanAddress];
+  if (localBias && !/\bantananarivo\b/i.test(cleanAddress)) {
+    queries.push(`${cleanAddress}, Antananarivo, Analamanga, Madagascar`);
+    queries.push(`${cleanAddress}, Antananarivo, Madagascar`);
+  } else if (!/\bmadagascar\b/i.test(cleanAddress)) {
+    queries.push(`${cleanAddress}, Madagascar`);
+  }
+  const uniqueQueries = [...new Set(queries.map(q => q.replace(/\s+/g, ' ').trim()))];
 
   let candidates = [];
-  for (const q of queries) {
+  for (const q of uniqueQueries) {
     await waitForNominatim();
     const url = new URL(NOMINATIM_URL);
     url.searchParams.set('q', q);
@@ -289,70 +296,6 @@ app.post('/api/admin/delivery-zones',requireAdmin,async(req,res)=>{try{const {zo
 app.patch('/api/admin/delivery-zones/:id',requireAdmin,async(req,res)=>{try{const {zone_name,delivery_fee,is_active}=req.body||{};const r=await pool.query(`UPDATE delivery_zones SET zone_name=COALESCE($2,zone_name),delivery_fee=CASE WHEN $3::boolean THEN $4::integer ELSE delivery_fee END,is_active=COALESCE($5,is_active),updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING *`,[Number(req.params.id),zone_name||null, Object.prototype.hasOwnProperty.call(req.body||{},'delivery_fee'),delivery_fee??null,typeof is_active==='boolean'?is_active:null]);if(!r.rows[0])return res.status(404).json({success:false,message:'Zone introuvable.'});res.json({success:true,zone:r.rows[0]});}catch(e){console.error(e);res.status(500).json({success:false,message:'Cannot update zone.'});}});
 app.get('/api/admin/conversations',requireAdmin,async(req,res)=>{try{const r=await pool.query('SELECT sender_id,language,human_mode,updated_at FROM customer_conversations ORDER BY updated_at DESC LIMIT 100');res.json(r.rows);}catch(e){console.error(e);res.status(500).json({error:'Database error'});}});
 app.post('/api/admin/conversations/:id/resume',requireAdmin,async(req,res)=>{try{await saveConversation(req.params.id,{human_mode:false});res.json({success:true,message:'Bot resumed for this customer.'});}catch(e){console.error(e);res.status(500).json({success:false});}});
-
-// Admin diagnostics and management endpoints (additive; existing API routes remain compatible).
-app.get('/api/health', async (req,res) => {
-  try {
-    await pool.query('SELECT 1');
-    res.json({
-      success: true,
-      server: 'online',
-      database: 'connected',
-      gemini_configured: !!GEMINI_API_KEY,
-      facebook_page_connected: !!PAGE_ACCESS_TOKEN,
-      cloudinary_configured: !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET)
-    });
-  } catch (e) {
-    console.error('Health check failed:', e.message);
-    res.status(503).json({ success:false, server:'online', database:'unavailable' });
-  }
-});
-
-// Full conversation history for the human support team.
-app.get('/api/admin/conversations/:id', requireAdmin, async (req,res) => {
-  try {
-    const r = await pool.query(
-      'SELECT sender_id,language,history,human_mode,updated_at FROM customer_conversations WHERE sender_id=$1',
-      [req.params.id]
-    );
-    if (!r.rows[0]) return res.status(404).json({ success:false, message:'Conversation introuvable.' });
-    res.json(r.rows[0]);
-  } catch (e) {
-    console.error('Conversation history failed:', e);
-    res.status(500).json({ success:false, message:'Database error' });
-  }
-});
-
-// Orders with customer and delivery details, restricted to administrators.
-app.get('/api/admin/orders', requireAdmin, async (req,res) => {
-  try {
-    const r = await pool.query('SELECT * FROM orders ORDER BY id DESC LIMIT 500');
-    res.json(r.rows);
-  } catch (e) {
-    console.error('Admin orders failed:', e);
-    res.status(500).json({ success:false, message:'Database error' });
-  }
-});
-
-// Safe stock adjustment without replacing or deleting the product record.
-app.patch('/api/admin/products/:id/stock', requireAdmin, async (req,res) => {
-  try {
-    const stock = Number(req.body?.stock);
-    if (!Number.isInteger(stock) || stock < 0) {
-      return res.status(400).json({ success:false, message:'Le stock doit être un entier positif ou zéro.' });
-    }
-    const r = await pool.query(
-      'UPDATE products SET stock=$1 WHERE id=$2 RETURNING id,name,price,stock,description,image_url',
-      [stock, Number(req.params.id)]
-    );
-    if (!r.rows[0]) return res.status(404).json({ success:false, message:'Produit introuvable.' });
-    res.json({ success:true, product:r.rows[0] });
-  } catch (e) {
-    console.error('Stock update failed:', e);
-    res.status(500).json({ success:false, message:'Erreur mise à jour stock.' });
-  }
-});
-
 app.get('/auth/facebook',(req,res)=>{if(!APP_ID||!REDIRECT_URI||!FB_CONFIG_ID)return res.status(500).send('Facebook configuration missing.');const state=crypto.randomBytes(16).toString('hex');loginStates.set(state,Date.now());const u=new URL(`https://www.facebook.com/${API_VERSION}/dialog/oauth`);u.searchParams.set('client_id',APP_ID);u.searchParams.set('redirect_uri',REDIRECT_URI);u.searchParams.set('config_id',FB_CONFIG_ID);u.searchParams.set('response_type','code');u.searchParams.set('state',state);res.redirect(u.toString());});
 app.get('/auth/facebook/callback',async(req,res)=>{try{const {code,state,error}=req.query;if(error)return res.status(400).send('Facebook login cancelled or denied.');const ts=loginStates.get(state);if(!code||!ts||Date.now()-ts>600000)return res.status(400).send('Invalid or expired login request.');loginStates.delete(state);const tokenUrl=new URL(`https://graph.facebook.com/${API_VERSION}/oauth/access_token`);tokenUrl.searchParams.set('client_id',APP_ID);tokenUrl.searchParams.set('client_secret',APP_SECRET);tokenUrl.searchParams.set('redirect_uri',REDIRECT_URI);tokenUrl.searchParams.set('code',code);const tr=await fetch(tokenUrl);const td=await tr.json();if(!tr.ok||!td.access_token){console.error(td);return res.status(400).send('Unable to get Facebook access token.');}const pagesUrl=new URL(`https://graph.facebook.com/${API_VERSION}/me/accounts`);pagesUrl.searchParams.set('fields','id,name,access_token');pagesUrl.searchParams.set('access_token',td.access_token);const pr=await fetch(pagesUrl);const pd=await pr.json();if(!pr.ok||!pd.data?.length){console.error(pd);return res.status(400).send('No Facebook Page found or permission denied.');}await saveFacebookPage(pd.data[0]);res.send(`<h2>ONE STORE AI</h2><p>Connexion Facebook réussie !</p><p>Page connectée : ${String(pd.data[0].name).replace(/[&<>"']/g,'')}</p><p>Vous pouvez retourner dans votre application.</p>`);}catch(e){console.error(e);res.status(500).send('Facebook connection error.');}});
 app.get('/webhook',(req,res)=>{if(req.query['hub.mode']==='subscribe'&&req.query['hub.verify_token']===VERIFY_TOKEN)return res.status(200).send(req.query['hub.challenge']);res.sendStatus(403);});
