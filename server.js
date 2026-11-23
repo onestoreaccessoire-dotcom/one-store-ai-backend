@@ -119,29 +119,75 @@ function deliveryFeeForKm(km) {
   return null;
 }
 async function geocodeAddress(address) {
-  const key = String(address).trim().toLowerCase();
+  const cleanAddress = String(address || '').trim().replace(/\s+/g, ' ');
+  const key = cleanAddress.toLocaleLowerCase();
   if (!key) throw new Error('EMPTY_ADDRESS');
   if (geocodeCache.has(key)) return geocodeCache.get(key);
-  const wait = 1100 - (Date.now() - lastNominatimRequest);
-  if (wait > 0) await sleep(wait);
-  lastNominatimRequest = Date.now();
-  const url = new URL(NOMINATIM_URL);
-  // Do not append the city/country twice when the customer already supplied them.
-  const cleanAddress = String(address).trim().replace(/\s+/g, ' ');
-  const lowerAddress = cleanAddress.toLocaleLowerCase();
-  const queryParts = [cleanAddress];
-  if (!lowerAddress.includes('antananarivo')) queryParts.push('Antananarivo');
-  if (!lowerAddress.includes('madagascar')) queryParts.push('Madagascar');
-  url.searchParams.set('q', queryParts.join(', '));
-  url.searchParams.set('format', 'jsonv2');
-  url.searchParams.set('limit', '3');
-  const response = await fetch(url, { headers: { 'User-Agent': OSM_USER_AGENT, 'Accept-Language': 'mg,fr,en' }, signal: AbortSignal.timeout(12000) });
-  if (!response.ok) throw new Error(`GEOCODER_HTTP_${response.status}`);
-  const results = await response.json();
-  if (!Array.isArray(results) || !results.length) throw new Error('ADDRESS_NOT_FOUND');
-  // Nominatim may return several nearby matches for a valid address. Use its best-ranked result.
-  const point = { latitude: Number(results[0].lat), longitude: Number(results[0].lon), label: results[0].display_name };
-  if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) throw new Error('BAD_GEOCODE_RESULT');
+
+  // Short/ambiguous neighbourhood names (for example "Ivato") should
+  // default to the store's Antananarivo delivery area, not a distant
+  // Malagasy place with the same name (for example Ivato near Ambositra).
+  const knownOtherCities = /\b(antsirabe|ambositra|toamasina|tamatave|mahajanga|majunga|fianarantsoa|toliara|tulear|antsiranana|diego|morondava|sambava|manakara|mananjary|nosy be|antsohihy|farafangana|ihosy|ambatondrazaka|maevatanana|miandrivazo|brickaville|maintirano)\b/i;
+  const localBias = !knownOtherCities.test(cleanAddress);
+
+  const waitForNominatim = async () => {
+    const wait = 1100 - (Date.now() - lastNominatimRequest);
+    if (wait > 0) await sleep(wait);
+    lastNominatimRequest = Date.now();
+  };
+
+  const queries = localBias
+    ? [
+        `${cleanAddress}, Antananarivo, Analamanga, Madagascar`,
+        `${cleanAddress}, Antananarivo, Madagascar`
+      ]
+    : [cleanAddress.includes('Madagascar') ? cleanAddress : `${cleanAddress}, Madagascar`];
+
+  let candidates = [];
+  for (const q of queries) {
+    await waitForNominatim();
+    const url = new URL(NOMINATIM_URL);
+    url.searchParams.set('q', q);
+    url.searchParams.set('format', 'jsonv2');
+    url.searchParams.set('limit', '8');
+    url.searchParams.set('countrycodes', 'mg');
+    if (localBias) {
+      // Bias results toward Antananarivo; do not hard-bound the search,
+      // because customers may also request delivery to other regions.
+      url.searchParams.set('viewbox', '47.30,-18.70,47.70,-19.10');
+    }
+    const response = await fetch(url, {
+      headers: { 'User-Agent': OSM_USER_AGENT, 'Accept-Language': 'mg,fr,en' },
+      signal: AbortSignal.timeout(12000)
+    });
+    if (!response.ok) throw new Error(`GEOCODER_HTTP_${response.status}`);
+    const results = await response.json();
+    if (Array.isArray(results) && results.length) candidates.push(...results);
+
+    // For a local/ambiguous query, keep searching if no Antananarivo-area
+    // result has appeared yet. This prevents a false match in another region.
+    if (!localBias || candidates.some(r => /antananarivo|analamanga/i.test(r.display_name || ''))) break;
+  }
+
+  if (!candidates.length) throw new Error('ADDRESS_NOT_FOUND');
+  const unique = [...new Map(candidates.map(r => [`${r.lat},${r.lon}`, r])).values()];
+  let selected;
+  if (localBias) {
+    const localCandidates = unique.filter(r => /antananarivo|analamanga/i.test(r.display_name || ''));
+    if (!localCandidates.length) throw new Error('ADDRESS_NOT_FOUND');
+    selected = localCandidates[0];
+  } else {
+    selected = unique[0];
+  }
+
+  const point = {
+    latitude: Number(selected.lat),
+    longitude: Number(selected.lon),
+    label: selected.display_name
+  };
+  if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) {
+    throw new Error('BAD_GEOCODE_RESULT');
+  }
   geocodeCache.set(key, point);
   if (geocodeCache.size > 500) geocodeCache.delete(geocodeCache.keys().next().value);
   return point;
