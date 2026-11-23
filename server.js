@@ -913,6 +913,32 @@ app.post("/webhook", (req, res) => {
   }
 });
 
+// GET PRODUCTS
+app.get("/api/products", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM products ORDER BY id DESC"
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Get products error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// GET ORDERS
+app.get("/api/orders", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM orders ORDER BY id DESC"
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Get orders error:", error);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
 // SERVER START
 
 initDatabase()
