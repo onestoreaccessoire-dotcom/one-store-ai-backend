@@ -128,15 +128,13 @@ async function geocodeAddress(address) {
   const url = new URL(NOMINATIM_URL);
   url.searchParams.set('q', `${address}, Antananarivo, Madagascar`);
   url.searchParams.set('format', 'jsonv2');
-  url.searchParams.set('limit', '3');
+  // Nominatim ranks matches by relevance; use its best match instead of
+  // rejecting normal queries merely because several similar places exist.
+  url.searchParams.set('limit', '1');
   const response = await fetch(url, { headers: { 'User-Agent': OSM_USER_AGENT, 'Accept-Language': 'mg,fr,en' }, signal: AbortSignal.timeout(12000) });
   if (!response.ok) throw new Error(`GEOCODER_HTTP_${response.status}`);
   const results = await response.json();
   if (!Array.isArray(results) || !results.length) throw new Error('ADDRESS_NOT_FOUND');
-  if (results.length > 1) {
-    const first = results[0], second = results[1];
-    if (first.display_name && second.display_name && first.display_name.toLowerCase() !== second.display_name.toLowerCase()) throw new Error('ADDRESS_AMBIGUOUS');
-  }
   const point = { latitude: Number(results[0].lat), longitude: Number(results[0].lon), label: results[0].display_name };
   if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) throw new Error('BAD_GEOCODE_RESULT');
   geocodeCache.set(key, point);
