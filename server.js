@@ -588,60 +588,6 @@ app.post("/webhook", (req, res) => {
 // START SERVER
 const PORT = process.env.PORT || 3000;
 
-initDatabase()
-  .then(() => {
-    app.get("/api/products", async (req, res) => {
-  try {
-    const result = await pool.query(
-      "SELECT * FROM products ORDER BY id DESC"
-    );
-    res.json(result.rows);
-  } catch (error) {
-    console.error("Get products error:", error);
-    res.status(500).json({ error: "Database error" });
-  }
-});
-    app.get("/api/orders", async (req, res) => {
-  try {
-    const result = await pool.query(
-      "SELECT * FROM orders ORDER BY id DESC"
-    );
-    res.json(result.rows);
-  } catch (error) {
-    console.error("Get orders error:", error);
-    res.status(500).json({ error: "Database error" });
-  }
-});
-    app.post("/api/upload", express.raw({ type: "*/*", limit: "5mb" }), (req, res) => {
-  if (!req.body || !req.body.length) {
-    return res.status(400).json({ success: false, message: "Aucune image reçue." });
-  }
-
-  const stream = cloudinary.uploader.upload_stream(
-    { folder: "one-store-ai" },
-    (error, result) => {
-      if (error) {
-        console.error("Cloudinary upload error:", error);
-        return res.status(500).json({ success: false });
-      }
-
-      res.json({
-        success: true,
-        image_url: result.secure_url
-      });
-    }
-  );
-
-  stream.end(req.body);
-});
-    app.listen(PORT, () => {
-      console.log("ONE STORE AI running on port " + PORT);
-    });
-  })
-  .catch(error => {
-    console.error("Database initialization failed:", error);
-    process.exit(1);
-  });
 // CLOUDINARY IMAGE UPLOAD
 app.post("/api/upload", express.raw({ type: "*/*", limit: "5mb" }), (req, res) => {
   if (!req.body || !req.body.length) {
