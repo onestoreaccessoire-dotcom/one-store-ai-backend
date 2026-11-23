@@ -126,7 +126,13 @@ async function geocodeAddress(address) {
   if (wait > 0) await sleep(wait);
   lastNominatimRequest = Date.now();
   const url = new URL(NOMINATIM_URL);
-  url.searchParams.set('q', `${address}, Antananarivo, Madagascar`);
+  // Do not append the city/country twice when the customer already supplied them.
+  const cleanAddress = String(address).trim().replace(/\s+/g, ' ');
+  const lowerAddress = cleanAddress.toLocaleLowerCase();
+  const queryParts = [cleanAddress];
+  if (!lowerAddress.includes('antananarivo')) queryParts.push('Antananarivo');
+  if (!lowerAddress.includes('madagascar')) queryParts.push('Madagascar');
+  url.searchParams.set('q', queryParts.join(', '));
   url.searchParams.set('format', 'jsonv2');
   url.searchParams.set('limit', '3');
   const response = await fetch(url, { headers: { 'User-Agent': OSM_USER_AGENT, 'Accept-Language': 'mg,fr,en' }, signal: AbortSignal.timeout(12000) });
@@ -224,7 +230,7 @@ async function processMessengerEvent(event) {
 }
 function requireAdmin(req,res,next){if(!ADMIN_API_KEY)return res.status(503).json({success:false,message:'ADMIN_API_KEY is not configured in Render.'});const key=req.get('x-admin-key')||req.query.admin_key;const a=Buffer.from(String(key||''));const b=Buffer.from(String(ADMIN_API_KEY));if(a.length!==b.length||!crypto.timingSafeEqual(a,b))return res.status(401).json({success:false,message:'Unauthorized'});next();}
 app.get('/',(req,res)=>res.send('ONE STORE AI Backend is running. Map data: © OpenStreetMap contributors; routing via OSRM.'));
-app.get('/api/delivery/quote',async(req,res)=>{try{const address=String(req.query.address||'').trim();if(!address)return res.status(400).json({success:false,message:'address query required'});const q=await calculateDelivery(address,null);res.json({success:true,origin:'Anosy, Antananarivo (approximate reference point)',address:q.label,distance_km:q.distance_km,delivery_fee_ariary:q.fee,regional:q.regional,attribution:'© OpenStreetMap contributors; routing via OSRM'});}catch(e){res.status(422).json({success:false,message:e.message==='ADDRESS_NOT_FOUND'?'Address not found or ambiguous.':'Unable to calculate route now. Please retry or use GPS.'});}});
+app.get('/api/delivery/quote',async(req,res)=>{try{const address=String(req.query.address||'').trim();if(!address)return res.status(400).json({success:false,message:'address query required'});const q=await calculateDelivery(address,null);res.json({success:true,origin:'Anosy, Antananarivo (approximate reference point)',address:q.label,distance_km:q.distance_km,delivery_fee_ariary:q.fee,regional:q.regional,attribution:'© OpenStreetMap contributors; routing via OSRM'});}catch(e){console.error('Delivery quote failed:',e.message);res.status(422).json({success:false,message:e.message==='ADDRESS_NOT_FOUND'?'Address not found. Try a more precise address or GPS.':e.message==='ROUTE_NOT_FOUND'?'Address found, but no driving route is available. Try GPS or another nearby address.':'Unable to calculate route now. Please retry or use GPS.'});}});
 app.get('/api/ai-status',(req,res)=>res.json({gemini_key_configured:!!GEMINI_API_KEY,gemini_model:GEMINI_MODEL,messenger_page_connected:!!PAGE_ACCESS_TOKEN,delivery_distance_engine:'OpenStreetMap Nominatim + OSRM',delivery_tariffs:'0-10km:3000; >10-15km:4000; >15-30km:5000; >30-40km:8000; >40km:regional confirmation'}));
 app.post('/api/products',async(req,res)=>{try{const {name,price,stock,description,image_url}=req.body||{};if(!name||price===undefined||!Number.isFinite(Number(price))||Number(price)<0)return res.status(400).json({success:false,message:'Nom et prix valides obligatoires.'});const r=await pool.query('INSERT INTO products(name,price,stock,description,image_url) VALUES($1,$2,$3,$4,$5) RETURNING *',[String(name).trim(),Number(price),Math.max(0,Math.floor(Number(stock)||0)),description||'',image_url||'']);res.json({success:true,product:r.rows[0]});}catch(e){console.error(e);res.status(500).json({success:false,message:'Erreur enregistrement produit.'});}});
 app.get('/api/products',async(req,res)=>{try{res.json(await getProducts());}catch(e){console.error(e);res.status(500).json({error:'Database error'});}});
