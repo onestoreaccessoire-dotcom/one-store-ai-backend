@@ -133,7 +133,10 @@ async function geocodeAddress(address) {
   if (!response.ok) throw new Error(`GEOCODER_HTTP_${response.status}`);
   const results = await response.json();
   if (!Array.isArray(results) || !results.length) throw new Error('ADDRESS_NOT_FOUND');
-  // Nominatim returns ranked alternatives; different display names do not by themselves mean ambiguity.
+  if (results.length > 1) {
+    const first = results[0], second = results[1];
+    if (first.display_name && second.display_name && first.display_name.toLowerCase() !== second.display_name.toLowerCase()) throw new Error('ADDRESS_AMBIGUOUS');
+  }
   const point = { latitude: Number(results[0].lat), longitude: Number(results[0].lon), label: results[0].display_name };
   if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) throw new Error('BAD_GEOCODE_RESULT');
   geocodeCache.set(key, point);
